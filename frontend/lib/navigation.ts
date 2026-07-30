@@ -23,6 +23,12 @@ import {
 
 export const navSections = [
   {
+    label: "Plataforma",
+    items: [
+      { href: "/plataforma", label: "Empresas SaaS", icon: Building2, permission: "plataforma.superadmin" },
+    ],
+  },
+  {
     label: "Principal",
     items: [
       { href: "/dashboard", label: "Dashboard", icon: Gauge, permission: "dashboard.ver" },
@@ -60,6 +66,7 @@ export const navSections = [
 ] as const;
 
 export const routeTitles: Record<string, string> = {
+  "/plataforma": "Administración SaaS",
   "/dashboard": "Dashboard",
   "/perfil": "Mi cuenta",
   "/agenda": "Agenda / Bahías",

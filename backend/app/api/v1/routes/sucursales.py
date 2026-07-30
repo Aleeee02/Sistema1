@@ -99,6 +99,8 @@ async def create_branch(
             Sucursal.estado == "activo",
         )
     )
+    if (active_count or 0) >= context.empresa.max_sucursales:
+        raise HTTPException(status_code=409, detail=f"Tu plan permite hasta {context.empresa.max_sucursales} sucursales activas")
     values = payload.model_dump()
     for key, value in values.items():
         if isinstance(value, str):

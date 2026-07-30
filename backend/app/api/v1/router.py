@@ -2,10 +2,11 @@ from fastapi import APIRouter, Depends
 
 from app.api.deps import require_module
 
-from app.api.v1.routes import agenda, auditoria, auth, clientes, comprobantes, configuracion, cotizaciones, empleados, estadisticas, health, inspecciones, inventario, notificaciones, ordenes, pagos, reportes, roles, servicios, sucursales, transferencias, usuarios, vehiculos
+from app.api.v1.routes import agenda, auditoria, auth, clientes, comprobantes, configuracion, cotizaciones, empleados, estadisticas, health, inspecciones, inventario, notificaciones, ordenes, pagos, plataforma, reportes, roles, servicios, sucursales, transferencias, usuarios, vehiculos
 
 api_router = APIRouter()
 api_router.include_router(health.router)
+api_router.include_router(plataforma.router, prefix="/plataforma", tags=["plataforma"])
 api_router.include_router(agenda.router, prefix="/agenda", tags=["agenda"], dependencies=[Depends(require_module("agenda"))])
 api_router.include_router(pagos.router, prefix="/pagos", tags=["pagos"], dependencies=[Depends(require_module("pagos"))])
 api_router.include_router(inspecciones.router, prefix="/inspecciones", tags=["inspecciones"], dependencies=[Depends(require_module("inspecciones"))])

@@ -18,6 +18,7 @@ class Usuario(UUIDPrimaryKeyMixin, Base):
     apellidos: Mapped[str] = mapped_column(String(100))
     telefono: Mapped[str | None] = mapped_column(String(30))
     estado: Mapped[str] = mapped_column(String(20), server_default="activo")
+    es_superadmin: Mapped[bool] = mapped_column(Boolean, server_default="false")
     ultimo_acceso_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     intentos_fallidos: Mapped[int] = mapped_column(server_default="0")
     bloqueado_hasta: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

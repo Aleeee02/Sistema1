@@ -47,6 +47,7 @@ class UsuarioSesion(BaseModel):
     apellidos: str
     empresa: EmpresaSesion
     permisos: list[str]
+    es_superadmin: bool = False
 
 
 class TokenResponse(BaseModel):

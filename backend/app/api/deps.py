@@ -101,6 +101,20 @@ CurrentContext = Annotated[AuthContext, Depends(get_current_context)]
 EmpresaId = Annotated[uuid.UUID, Depends(get_empresa_id)]
 
 
+async def require_superadmin(
+    context: Annotated[AuthContext, Depends(get_current_context)],
+) -> AuthContext:
+    if not context.usuario.es_superadmin:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Acceso exclusivo para el administrador de la plataforma",
+        )
+    return context
+
+
+SuperadminContext = Annotated[AuthContext, Depends(require_superadmin)]
+
+
 def branch_scope(context: AuthContext, column) -> ColumnElement[bool]:
     if not context.sucursal_ids:
         return true()

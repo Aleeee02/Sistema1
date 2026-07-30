@@ -70,6 +70,9 @@ async def list_users(context: CurrentContext, db: AsyncSession = Depends(get_db)
 @router.post("", response_model=UsuarioEmpresaRead, status_code=status.HTTP_201_CREATED)
 async def create_user(payload: UsuarioEmpresaCreate, context: CurrentContext, db: AsyncSession = Depends(get_db)):
     require_admin(context); await validate_role(db, payload.rol_id, context); branches = await validate_branches(db, payload.sucursal_ids, context.empresa_id)
+    active_users = await db.scalar(select(func.count(UsuarioEmpresa.id)).where(UsuarioEmpresa.empresa_id == context.empresa_id, UsuarioEmpresa.estado == "activo"))
+    if (active_users or 0) >= context.empresa.max_usuarios:
+        raise HTTPException(status_code=409, detail=f"Tu plan permite hasta {context.empresa.max_usuarios} usuarios activos")
     if await db.scalar(select(Usuario.id).where(func.lower(Usuario.email) == payload.email.lower())):
         raise HTTPException(status_code=409, detail="El correo ya está registrado")
     user = Usuario(email=payload.email.lower(), password_hash=hash_password(payload.password), nombres=payload.nombres.strip(), apellidos=payload.apellidos.strip(), telefono=payload.telefono)

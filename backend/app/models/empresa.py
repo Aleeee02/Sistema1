@@ -1,8 +1,8 @@
 import uuid
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Numeric, String, Text, func
+from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Integer, Numeric, String, Text, func
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -32,6 +32,13 @@ class Empresa(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         String(50), server_default="America/Lima"
     )
     estado: Mapped[str] = mapped_column(String(20), server_default="activo")
+    plan_codigo: Mapped[str] = mapped_column(String(30), server_default="basico")
+    suscripcion_estado: Mapped[str] = mapped_column(String(20), server_default="prueba")
+    suscripcion_inicio: Mapped[date] = mapped_column(Date, server_default=func.current_date())
+    suscripcion_fin: Mapped[date | None] = mapped_column(Date)
+    max_usuarios: Mapped[int] = mapped_column(Integer, server_default="5")
+    max_sucursales: Mapped[int] = mapped_column(Integer, server_default="1")
+    notas_internas: Mapped[str | None] = mapped_column(Text)
 
 
 class Sucursal(UUIDPrimaryKeyMixin, Base):

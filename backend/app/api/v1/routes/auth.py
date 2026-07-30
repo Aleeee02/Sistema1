@@ -62,6 +62,7 @@ def build_user_response(
         email=usuario.email,
         nombres=usuario.nombres,
         apellidos=usuario.apellidos,
+        es_superadmin=usuario.es_superadmin,
         permisos=sorted(set(visible_permissions(rol.codigo, ALL_PERMISSIONS)) | set(custom_permissions)),
         empresa=EmpresaSesion(
             id=empresa.id,
