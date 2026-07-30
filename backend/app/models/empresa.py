@@ -3,7 +3,7 @@ from datetime import date, datetime
 from decimal import Decimal
 
 from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Integer, Numeric, String, Text, func
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base
@@ -39,6 +39,19 @@ class Empresa(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     max_usuarios: Mapped[int] = mapped_column(Integer, server_default="5")
     max_sucursales: Mapped[int] = mapped_column(Integer, server_default="1")
     notas_internas: Mapped[str | None] = mapped_column(Text)
+
+
+class PlanSaaS(UUIDPrimaryKeyMixin, TimestampMixin, Base):
+    __tablename__ = "planes_saas"
+
+    codigo: Mapped[str] = mapped_column(String(30), unique=True)
+    nombre: Mapped[str] = mapped_column(String(80))
+    descripcion: Mapped[str | None] = mapped_column(Text)
+    precio_mensual: Mapped[Decimal] = mapped_column(Numeric(12, 2), server_default="0")
+    max_usuarios: Mapped[int] = mapped_column(Integer, server_default="5")
+    max_sucursales: Mapped[int] = mapped_column(Integer, server_default="1")
+    modulos: Mapped[list[str]] = mapped_column(JSONB, server_default="[]")
+    estado: Mapped[str] = mapped_column(String(20), server_default="activo")
 
 
 class Sucursal(UUIDPrimaryKeyMixin, Base):

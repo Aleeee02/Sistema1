@@ -8,17 +8,26 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.deps import SuperadminContext
 from app.core.security import hash_password
 from app.db.session import get_db
-from app.models.empresa import Empresa, Sucursal
+from app.models.empresa import Empresa, PlanSaaS, Sucursal
 from app.models.orden import OrdenTrabajo
 from app.models.usuario import Rol, Usuario, UsuarioEmpresa, UsuarioSucursal
 from app.schemas.plataforma import (
     EmpresaPlataformaCreate,
     EmpresaPlataformaRead,
     EmpresaPlataformaUpdate,
+    PlanSaaSRead,
+    PlanSaaSUpdate,
     ResumenPlataforma,
 )
 
 router = APIRouter()
+
+MODULES = {
+    "dashboard", "agenda", "clientes", "vehiculos", "ordenes", "cotizaciones",
+    "inspecciones", "pagos", "servicios", "inventario", "transferencias",
+    "empleados", "sucursales", "usuarios", "estadisticas", "reportes",
+    "configuracion", "comprobantes", "auditoria",
+}
 
 
 async def _serialize(db: AsyncSession, empresa: Empresa) -> EmpresaPlataformaRead:
@@ -76,6 +85,34 @@ async def list_companies(_: SuperadminContext, db: AsyncSession = Depends(get_db
     return [await _serialize(db, company) for company in companies]
 
 
+@router.get("/planes", response_model=list[PlanSaaSRead])
+async def list_plans(_: SuperadminContext, db: AsyncSession = Depends(get_db)):
+    return list((await db.scalars(select(PlanSaaS).order_by(PlanSaaS.precio_mensual, PlanSaaS.nombre))).all())
+
+
+@router.patch("/planes/{plan_id}", response_model=PlanSaaSRead)
+async def update_plan(
+    plan_id: uuid.UUID,
+    payload: PlanSaaSUpdate,
+    _: SuperadminContext,
+    db: AsyncSession = Depends(get_db),
+):
+    plan = await db.get(PlanSaaS, plan_id)
+    if not plan:
+        raise HTTPException(status_code=404, detail="Plan no encontrado")
+    values = payload.model_dump(exclude_unset=True)
+    if "modulos" in values:
+        invalid = set(values["modulos"]) - MODULES
+        if invalid:
+            raise HTTPException(status_code=422, detail=f"Módulos desconocidos: {', '.join(sorted(invalid))}")
+        values["modulos"] = sorted(set(values["modulos"]) | {"dashboard"})
+    for key, value in values.items():
+        setattr(plan, key, value.strip() if isinstance(value, str) else value)
+    await db.commit()
+    await db.refresh(plan)
+    return plan
+
+
 @router.post("/empresas", response_model=EmpresaPlataformaRead, status_code=status.HTTP_201_CREATED)
 async def create_company(
     payload: EmpresaPlataformaCreate,
@@ -93,6 +130,13 @@ async def create_company(
     )
     if not role:
         raise HTTPException(status_code=409, detail="No existe el rol de administrador del sistema")
+    plan = await db.scalar(
+        select(PlanSaaS).where(
+            PlanSaaS.codigo == payload.plan_codigo, PlanSaaS.estado == "activo"
+        )
+    )
+    if not plan:
+        raise HTTPException(status_code=422, detail="El plan seleccionado no está disponible")
 
     company = Empresa(
         nombre_comercial=payload.nombre_comercial.strip(),
@@ -103,8 +147,8 @@ async def create_company(
         plan_codigo=payload.plan_codigo,
         suscripcion_estado="prueba",
         suscripcion_fin=payload.suscripcion_fin,
-        max_usuarios=payload.max_usuarios,
-        max_sucursales=payload.max_sucursales,
+        max_usuarios=plan.max_usuarios,
+        max_sucursales=plan.max_sucursales,
     )
     admin = Usuario(
         email=str(payload.admin_email).lower(),
@@ -149,7 +193,18 @@ async def update_company(
     company = await db.get(Empresa, empresa_id)
     if not company:
         raise HTTPException(status_code=404, detail="Empresa no encontrada")
-    for key, value in payload.model_dump(exclude_unset=True).items():
+    values = payload.model_dump(exclude_unset=True)
+    if "plan_codigo" in values and values["plan_codigo"] != company.plan_codigo:
+        plan = await db.scalar(
+            select(PlanSaaS).where(
+                PlanSaaS.codigo == values["plan_codigo"], PlanSaaS.estado == "activo"
+            )
+        )
+        if not plan:
+            raise HTTPException(status_code=422, detail="El plan seleccionado no está disponible")
+        values.setdefault("max_usuarios", plan.max_usuarios)
+        values.setdefault("max_sucursales", plan.max_sucursales)
+    for key, value in values.items():
         setattr(company, key, value.strip() if isinstance(value, str) else value)
     try:
         await db.commit()

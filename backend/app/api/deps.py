@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.security import decode_token
 from app.core.permissions import has_permission
 from app.db.session import get_db
-from app.models.empresa import Empresa
+from app.models.empresa import Empresa, PlanSaaS
 from app.models.usuario import Rol, RolPermiso, Usuario, UsuarioEmpresa, UsuarioSucursal
 
 bearer_scheme = HTTPBearer(auto_error=False)
@@ -24,6 +24,7 @@ class AuthContext:
     rol: Rol
     sucursal_ids: frozenset[uuid.UUID]
     permisos: frozenset[str]
+    modulos_plan: frozenset[str]
 
     @property
     def empresa_id(self) -> uuid.UUID:
@@ -88,7 +89,16 @@ async def get_current_context(
             )
         ).all()
     )
-    return AuthContext(*row, branch_ids, custom_permissions)
+    plan_modules = frozenset(
+        await db.scalar(
+            select(PlanSaaS.modulos).where(
+                PlanSaaS.codigo == row[2].plan_codigo,
+                PlanSaaS.estado == "activo",
+            )
+        )
+        or []
+    )
+    return AuthContext(*row, branch_ids, custom_permissions, plan_modules)
 
 
 async def get_empresa_id(
@@ -134,6 +144,11 @@ def require_module(module: str):
         request: Request,
         context: Annotated[AuthContext, Depends(get_current_context)],
     ) -> AuthContext:
+        if context.modulos_plan and module not in context.modulos_plan:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"El módulo {module} no está incluido en el plan de la empresa",
+            )
         action = "ver" if request.method in {"GET", "HEAD", "OPTIONS"} else "gestionar"
         if not context_has_permission(context, f"{module}.{action}"):
             raise HTTPException(

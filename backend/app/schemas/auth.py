@@ -48,6 +48,7 @@ class UsuarioSesion(BaseModel):
     empresa: EmpresaSesion
     permisos: list[str]
     es_superadmin: bool = False
+    modulos_plan: list[str] = Field(default_factory=list)
 
 
 class TokenResponse(BaseModel):

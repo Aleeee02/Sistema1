@@ -56,6 +56,7 @@ def build_user_response(
     empresa: Empresa,
     rol: Rol,
     custom_permissions: set[str] | frozenset[str] = frozenset(),
+    modulos_plan: set[str] | frozenset[str] = frozenset(),
 ) -> UsuarioSesion:
     return UsuarioSesion(
         id=usuario.id,
@@ -63,6 +64,7 @@ def build_user_response(
         nombres=usuario.nombres,
         apellidos=usuario.apellidos,
         es_superadmin=usuario.es_superadmin,
+        modulos_plan=sorted(modulos_plan),
         permisos=sorted(set(visible_permissions(rol.codigo, ALL_PERMISSIONS)) | set(custom_permissions)),
         empresa=EmpresaSesion(
             id=empresa.id,
@@ -191,7 +193,7 @@ async def me(
     context: Annotated[AuthContext, Depends(get_current_context)],
 ) -> UsuarioSesion:
     return build_user_response(
-        context.usuario, context.empresa, context.rol, context.permisos
+        context.usuario, context.empresa, context.rol, context.permisos, context.modulos_plan
     )
 
 

@@ -13,6 +13,7 @@ export function Sidebar() {
     apellidos: string;
     permisos: string[];
     es_superadmin: boolean;
+    modulos_plan: string[];
     empresa: { nombre: string; rol: string; color_primario: string };
   } | null>(null);
 
@@ -53,7 +54,8 @@ export function Sidebar() {
             session
               ? item.permission === "plataforma.superadmin"
                 ? session.es_superadmin
-                : session.permisos.includes(item.permission)
+                : session.permisos.includes(item.permission) &&
+                  (!session.modulos_plan?.length || session.modulos_plan.includes(item.permission.split(".")[0]))
               : item.href === "/dashboard",
           );
           if (items.length === 0) return null;

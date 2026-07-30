@@ -2,6 +2,7 @@ import uuid
 from datetime import date, datetime
 
 from pydantic import EmailStr, Field
+from decimal import Decimal
 
 from app.schemas.common import ORMModel
 
@@ -63,3 +64,25 @@ class ResumenPlataforma(ORMModel):
     empresas_prueba: int
     empresas_vencidas: int
     usuarios_activos: int
+
+
+class PlanSaaSRead(ORMModel):
+    id: uuid.UUID
+    codigo: str
+    nombre: str
+    descripcion: str | None
+    precio_mensual: Decimal
+    max_usuarios: int
+    max_sucursales: int
+    modulos: list[str]
+    estado: str
+
+
+class PlanSaaSUpdate(ORMModel):
+    nombre: str | None = Field(default=None, min_length=2, max_length=80)
+    descripcion: str | None = Field(default=None, max_length=500)
+    precio_mensual: Decimal | None = Field(default=None, ge=0)
+    max_usuarios: int | None = Field(default=None, ge=1, le=10000)
+    max_sucursales: int | None = Field(default=None, ge=1, le=1000)
+    modulos: list[str] | None = None
+    estado: str | None = Field(default=None, pattern="^(activo|inactivo)$")

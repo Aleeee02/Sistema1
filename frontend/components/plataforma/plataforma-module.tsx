@@ -1,7 +1,7 @@
 "use client";
 
 import { FormEvent, useCallback, useEffect, useState } from "react";
-import { Building2, Plus, Users, X } from "lucide-react";
+import { Building2, Plus, Settings2, Users, X } from "lucide-react";
 import { ApiError, apiRequest } from "@/lib/api";
 import { PageHeading } from "@/components/ui/page-heading";
 
@@ -13,6 +13,20 @@ type Company = {
   max_sucursales: number; notas_internas: string | null; usuarios_activos: number;
   sucursales_activas: number; ordenes_total: number; created_at: string;
 };
+type Plan = {
+  id: string; codigo: string; nombre: string; descripcion: string | null;
+  precio_mensual: string; max_usuarios: number; max_sucursales: number;
+  modulos: string[]; estado: string;
+};
+
+const moduleOptions = [
+  ["agenda","Agenda"],["clientes","Clientes"],["vehiculos","Vehículos"],
+  ["ordenes","Órdenes"],["cotizaciones","Cotizaciones"],["inspecciones","Inspecciones"],
+  ["pagos","Pagos"],["servicios","Servicios"],["inventario","Inventario"],
+  ["transferencias","Transferencias"],["empleados","Empleados"],["sucursales","Sucursales"],
+  ["usuarios","Usuarios y roles"],["estadisticas","Estadísticas"],["reportes","Reportes"],
+  ["configuracion","Configuración"],["comprobantes","Comprobantes"],["auditoria","Auditoría"],
+] as const;
 
 const emptyForm = {
   nombre_comercial: "", razon_social: "", ruc: "", email: "", telefono: "",
@@ -23,6 +37,8 @@ const emptyForm = {
 export function PlataformaModule() {
   const [summary, setSummary] = useState<Summary | null>(null);
   const [companies, setCompanies] = useState<Company[]>([]);
+  const [plans, setPlans] = useState<Plan[]>([]);
+  const [editingPlan, setEditingPlan] = useState<Plan | null>(null);
   const [selected, setSelected] = useState<Company | null>(null);
   const [creating, setCreating] = useState(false);
   const [form, setForm] = useState(emptyForm);
@@ -31,11 +47,12 @@ export function PlataformaModule() {
 
   const load = useCallback(async () => {
     try {
-      const [stats, rows] = await Promise.all([
+      const [stats, rows, planRows] = await Promise.all([
         apiRequest<Summary>("/plataforma/resumen"),
         apiRequest<Company[]>("/plataforma/empresas"),
+        apiRequest<Plan[]>("/plataforma/planes"),
       ]);
-      setSummary(stats); setCompanies(rows); setError("");
+      setSummary(stats); setCompanies(rows); setPlans(planRows); setError("");
     } catch (value) {
       setError(value instanceof ApiError ? value.message : "No se pudo cargar la plataforma");
     }
@@ -74,8 +91,26 @@ export function PlataformaModule() {
     } finally { setSaving(false); }
   }
 
+  async function updatePlan(event: FormEvent) {
+    event.preventDefault(); if (!editingPlan) return; setSaving(true); setError("");
+    try {
+      await apiRequest(`/plataforma/planes/${editingPlan.id}`, {
+        method: "PATCH",
+        body: JSON.stringify({
+          nombre: editingPlan.nombre, descripcion: editingPlan.descripcion,
+          precio_mensual: editingPlan.precio_mensual,
+          max_usuarios: editingPlan.max_usuarios, max_sucursales: editingPlan.max_sucursales,
+          modulos: editingPlan.modulos, estado: editingPlan.estado,
+        }),
+      });
+      setEditingPlan(null); await load();
+    } catch (value) {
+      setError(value instanceof ApiError ? value.message : "No se pudo actualizar el plan");
+    } finally { setSaving(false); }
+  }
+
   return <div className="space-y-5">
-    <PageHeading title="Administración de la plataforma" subtitle="Empresas, suscripciones y límites del sistema SaaS." action={<button className="button primary" onClick={() => setCreating(true)}><Plus size={16}/> Nueva empresa</button>} />
+    <PageHeading title="Administración de la plataforma" subtitle="Empresas, suscripciones y límites del sistema SaaS." action={<div className="flex gap-2"><button className="button" disabled={!plans.length} onClick={() => setEditingPlan(plans[0])}><Settings2 size={16}/> Configurar planes</button><button className="button primary" onClick={() => setCreating(true)}><Plus size={16}/> Nueva empresa</button></div>} />
     {error ? <div className="rounded-xl bg-red-50 p-3 text-sm text-red-700">{error}</div> : null}
     <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
       <Stat label="Empresas" value={summary?.empresas_total} icon={<Building2 size={18}/>} />
@@ -103,10 +138,9 @@ export function PlataformaModule() {
       <Input label="Razón social" value={form.razon_social} set={v=>setForm({...form,razon_social:v})}/>
       <Input label="RUC" value={form.ruc} set={v=>setForm({...form,ruc:v})} pattern="\d{11}"/>
       <Input label="Correo de la empresa" type="email" value={form.email} set={v=>setForm({...form,email:v})} required={false}/>
-      <Select label="Plan" value={form.plan_codigo} set={v=>setForm({...form,plan_codigo:v})} options={["basico","profesional","empresarial"]}/>
+      <Select label="Plan" value={form.plan_codigo} set={v=>setForm({...form,plan_codigo:v})} options={plans.filter(p=>p.estado==="activo").map(p=>p.codigo)}/>
       <Input label="Fin de suscripción" type="date" value={form.suscripcion_fin} set={v=>setForm({...form,suscripcion_fin:v})} required={false}/>
-      <Input label="Máximo de usuarios" type="number" value={String(form.max_usuarios)} set={v=>setForm({...form,max_usuarios:Number(v)})}/>
-      <Input label="Máximo de sucursales" type="number" value={String(form.max_sucursales)} set={v=>setForm({...form,max_sucursales:Number(v)})}/>
+      <div className="sm:col-span-2 rounded-xl bg-blue-50 p-3 text-sm text-blue-800">El plan seleccionado asignará automáticamente sus límites y módulos.</div>
       <div className="sm:col-span-2 border-t pt-4 font-bold">Administrador inicial</div>
       <Input label="Nombres" value={form.admin_nombres} set={v=>setForm({...form,admin_nombres:v})}/>
       <Input label="Apellidos" value={form.admin_apellidos} set={v=>setForm({...form,admin_apellidos:v})}/>
@@ -117,7 +151,7 @@ export function PlataformaModule() {
     {selected ? <Dialog title={`Administrar ${selected.nombre_comercial}`} close={()=>setSelected(null)}><form className="grid gap-4 sm:grid-cols-2" onSubmit={updateCompany}>
       <Input label="Nombre comercial" value={selected.nombre_comercial} set={v=>setSelected({...selected,nombre_comercial:v})}/>
       <Input label="Razón social" value={selected.razon_social} set={v=>setSelected({...selected,razon_social:v})}/>
-      <Select label="Plan" value={selected.plan_codigo} set={v=>setSelected({...selected,plan_codigo:v})} options={["basico","profesional","empresarial"]}/>
+      <Select label="Plan" value={selected.plan_codigo} set={v=>{const p=plans.find(x=>x.codigo===v);setSelected({...selected,plan_codigo:v,max_usuarios:p?.max_usuarios??selected.max_usuarios,max_sucursales:p?.max_sucursales??selected.max_sucursales})}} options={plans.filter(p=>p.estado==="activo").map(p=>p.codigo)}/>
       <Select label="Suscripción" value={selected.suscripcion_estado} set={v=>setSelected({...selected,suscripcion_estado:v})} options={["prueba","activa","vencida","cancelada"]}/>
       <Select label="Acceso" value={selected.estado} set={v=>setSelected({...selected,estado:v})} options={["activo","suspendido","inactivo"]}/>
       <Input label="Fin de suscripción" type="date" value={selected.suscripcion_fin || ""} set={v=>setSelected({...selected,suscripcion_fin:v || null})} required={false}/>
@@ -125,6 +159,15 @@ export function PlataformaModule() {
       <Input label="Máximo de sucursales" type="number" value={String(selected.max_sucursales)} set={v=>setSelected({...selected,max_sucursales:Number(v)})}/>
       <label className="sm:col-span-2 text-xs font-semibold text-slate-600">Notas internas<textarea className="form-control mt-1 min-h-24" value={selected.notas_internas || ""} onChange={e=>setSelected({...selected,notas_internas:e.target.value})}/></label>
       <Actions saving={saving} cancel={()=>setSelected(null)}/>
+    </form></Dialog> : null}
+    {editingPlan ? <Dialog title="Configurar planes" close={()=>setEditingPlan(null)}><div className="mb-5 flex flex-wrap gap-2">{plans.map(plan=><button type="button" className={`button ${editingPlan.id===plan.id?"primary":""}`} key={plan.id} onClick={()=>setEditingPlan(plan)}>{plan.nombre}</button>)}</div><form className="grid gap-4 sm:grid-cols-2" onSubmit={updatePlan}>
+      <Input label="Nombre" value={editingPlan.nombre} set={v=>setEditingPlan({...editingPlan,nombre:v})}/>
+      <Input label="Precio mensual (S/)" type="number" value={editingPlan.precio_mensual} set={v=>setEditingPlan({...editingPlan,precio_mensual:v})}/>
+      <Input label="Usuarios incluidos" type="number" value={String(editingPlan.max_usuarios)} set={v=>setEditingPlan({...editingPlan,max_usuarios:Number(v)})}/>
+      <Input label="Sucursales incluidas" type="number" value={String(editingPlan.max_sucursales)} set={v=>setEditingPlan({...editingPlan,max_sucursales:Number(v)})}/>
+      <label className="sm:col-span-2 text-xs font-semibold text-slate-600">Descripción<textarea className="form-control mt-1" value={editingPlan.descripcion || ""} onChange={e=>setEditingPlan({...editingPlan,descripcion:e.target.value})}/></label>
+      <div className="sm:col-span-2"><div className="mb-2 text-xs font-semibold text-slate-600">Módulos incluidos</div><div className="grid gap-2 sm:grid-cols-3">{moduleOptions.map(([code,label])=><label className="flex items-center gap-2 rounded-xl border p-3 text-sm" key={code}><input type="checkbox" checked={editingPlan.modulos.includes(code)} onChange={e=>setEditingPlan({...editingPlan,modulos:e.target.checked?[...editingPlan.modulos,code]:editingPlan.modulos.filter(x=>x!==code)})}/>{label}</label>)}</div></div>
+      <Actions saving={saving} cancel={()=>setEditingPlan(null)}/>
     </form></Dialog> : null}
   </div>;
 }
