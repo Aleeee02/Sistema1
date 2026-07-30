@@ -1,4 +1,5 @@
 import uuid
+from datetime import date, timedelta
 from dataclasses import dataclass
 from typing import Annotated
 
@@ -70,6 +71,22 @@ async def get_current_context(
     ).one_or_none()
     if not row:
         raise unauthorized
+    usuario, _, empresa, _ = row
+    if not usuario.es_superadmin:
+        if empresa.suscripcion_estado == "cancelada":
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="La suscripción de la empresa está cancelada",
+            )
+        if empresa.suscripcion_fin and date.today() > empresa.suscripcion_fin:
+            if empresa.suscripcion_estado != "vencida":
+                empresa.suscripcion_estado = "vencida"
+                await db.commit()
+            if date.today() > empresa.suscripcion_fin + timedelta(days=empresa.dias_gracia):
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="La suscripción venció. Comunícate con el administrador de la plataforma",
+                )
     branch_ids = frozenset(
         (
             await db.scalars(

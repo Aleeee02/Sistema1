@@ -3,7 +3,7 @@ from app.models.agenda import Bahia, Cita
 from app.models.cliente import Cliente
 from app.models.comprobante import Comprobante, ComprobanteItem
 from app.models.cotizacion import Cotizacion, CotizacionItem
-from app.models.empresa import Empresa, PlanSaaS, Sucursal
+from app.models.empresa import Empresa, PagoSuscripcion, PlanSaaS, Sucursal
 from app.models.empleado import Empleado, EmpleadoSucursal, OrdenEmpleado
 from app.models.orden import OrdenTrabajo, Servicio
 from app.models.pago import MetodoPagoConfig, Pago
@@ -31,6 +31,7 @@ __all__ = [
     "CotizacionItem",
     "Empresa",
     "PlanSaaS",
+    "PagoSuscripcion",
     "Empleado",
     "EmpleadoSucursal",
     "OrdenEmpleado",

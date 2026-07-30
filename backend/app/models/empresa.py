@@ -38,6 +38,7 @@ class Empresa(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     suscripcion_fin: Mapped[date | None] = mapped_column(Date)
     max_usuarios: Mapped[int] = mapped_column(Integer, server_default="5")
     max_sucursales: Mapped[int] = mapped_column(Integer, server_default="1")
+    dias_gracia: Mapped[int] = mapped_column(Integer, server_default="5")
     notas_internas: Mapped[str | None] = mapped_column(Text)
 
 
@@ -52,6 +53,24 @@ class PlanSaaS(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     max_sucursales: Mapped[int] = mapped_column(Integer, server_default="1")
     modulos: Mapped[list[str]] = mapped_column(JSONB, server_default="[]")
     estado: Mapped[str] = mapped_column(String(20), server_default="activo")
+
+
+class PagoSuscripcion(UUIDPrimaryKeyMixin, Base):
+    __tablename__ = "pagos_suscripciones"
+
+    empresa_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("empresas.id"))
+    plan_codigo: Mapped[str] = mapped_column(String(30))
+    monto: Mapped[Decimal] = mapped_column(Numeric(12, 2))
+    moneda: Mapped[str] = mapped_column(String(3), server_default="PEN")
+    ciclo: Mapped[str] = mapped_column(String(20))
+    metodo_pago: Mapped[str] = mapped_column(String(30))
+    referencia: Mapped[str | None] = mapped_column(String(120))
+    periodo_inicio: Mapped[date] = mapped_column(Date)
+    periodo_fin: Mapped[date] = mapped_column(Date)
+    pagado_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    registrado_por: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("usuarios.id"))
+    observaciones: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
 class Sucursal(UUIDPrimaryKeyMixin, Base):

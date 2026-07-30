@@ -34,6 +34,7 @@ class EmpresaPlataformaUpdate(ORMModel):
     suscripcion_fin: date | None = None
     max_usuarios: int | None = Field(default=None, ge=1, le=10000)
     max_sucursales: int | None = Field(default=None, ge=1, le=1000)
+    dias_gracia: int | None = Field(default=None, ge=0, le=60)
     notas_internas: str | None = Field(default=None, max_length=2000)
 
 
@@ -51,6 +52,7 @@ class EmpresaPlataformaRead(ORMModel):
     suscripcion_fin: date | None
     max_usuarios: int
     max_sucursales: int
+    dias_gracia: int
     notas_internas: str | None
     usuarios_activos: int
     sucursales_activas: int
@@ -86,3 +88,26 @@ class PlanSaaSUpdate(ORMModel):
     max_sucursales: int | None = Field(default=None, ge=1, le=1000)
     modulos: list[str] | None = None
     estado: str | None = Field(default=None, pattern="^(activo|inactivo)$")
+
+
+class PagoSuscripcionCreate(ORMModel):
+    monto: Decimal = Field(ge=0)
+    ciclo: str = Field(pattern="^(mensual|trimestral|semestral|anual)$")
+    metodo_pago: str = Field(pattern="^(yape|plin|transferencia|efectivo|tarjeta|otro)$")
+    referencia: str | None = Field(default=None, max_length=120)
+    observaciones: str | None = Field(default=None, max_length=1000)
+
+
+class PagoSuscripcionRead(ORMModel):
+    id: uuid.UUID
+    empresa_id: uuid.UUID
+    plan_codigo: str
+    monto: Decimal
+    moneda: str
+    ciclo: str
+    metodo_pago: str
+    referencia: str | None
+    periodo_inicio: date
+    periodo_fin: date
+    pagado_at: datetime
+    observaciones: str | None

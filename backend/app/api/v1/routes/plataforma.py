@@ -1,4 +1,6 @@
 import uuid
+import calendar
+from datetime import UTC, date, datetime, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import func, select
@@ -8,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.deps import SuperadminContext
 from app.core.security import hash_password
 from app.db.session import get_db
-from app.models.empresa import Empresa, PlanSaaS, Sucursal
+from app.models.empresa import Empresa, PagoSuscripcion, PlanSaaS, Sucursal
 from app.models.orden import OrdenTrabajo
 from app.models.usuario import Rol, Usuario, UsuarioEmpresa, UsuarioSucursal
 from app.schemas.plataforma import (
@@ -17,6 +19,8 @@ from app.schemas.plataforma import (
     EmpresaPlataformaUpdate,
     PlanSaaSRead,
     PlanSaaSUpdate,
+    PagoSuscripcionCreate,
+    PagoSuscripcionRead,
     ResumenPlataforma,
 )
 
@@ -28,6 +32,14 @@ MODULES = {
     "empleados", "sucursales", "usuarios", "estadisticas", "reportes",
     "configuracion", "comprobantes", "auditoria",
 }
+CYCLE_MONTHS = {"mensual": 1, "trimestral": 3, "semestral": 6, "anual": 12}
+
+
+def _add_months(value: date, months: int) -> date:
+    month_index = value.month - 1 + months
+    year = value.year + month_index // 12
+    month = month_index % 12 + 1
+    return date(year, month, min(value.day, calendar.monthrange(year, month)[1]))
 
 
 async def _serialize(db: AsyncSession, empresa: Empresa) -> EmpresaPlataformaRead:
@@ -111,6 +123,61 @@ async def update_plan(
     await db.commit()
     await db.refresh(plan)
     return plan
+
+
+@router.get("/empresas/{empresa_id}/pagos", response_model=list[PagoSuscripcionRead])
+async def list_subscription_payments(
+    empresa_id: uuid.UUID,
+    _: SuperadminContext,
+    db: AsyncSession = Depends(get_db),
+):
+    if not await db.get(Empresa, empresa_id):
+        raise HTTPException(status_code=404, detail="Empresa no encontrada")
+    return list(
+        (
+            await db.scalars(
+                select(PagoSuscripcion)
+                .where(PagoSuscripcion.empresa_id == empresa_id)
+                .order_by(PagoSuscripcion.pagado_at.desc())
+            )
+        ).all()
+    )
+
+
+@router.post("/empresas/{empresa_id}/pagos", response_model=PagoSuscripcionRead, status_code=status.HTTP_201_CREATED)
+async def register_subscription_payment(
+    empresa_id: uuid.UUID,
+    payload: PagoSuscripcionCreate,
+    context: SuperadminContext,
+    db: AsyncSession = Depends(get_db),
+):
+    company = await db.get(Empresa, empresa_id)
+    if not company:
+        raise HTTPException(status_code=404, detail="Empresa no encontrada")
+    today = date.today()
+    start = company.suscripcion_fin + timedelta(days=1) if company.suscripcion_fin and company.suscripcion_fin >= today else today
+    end = _add_months(start, CYCLE_MONTHS[payload.ciclo]) - timedelta(days=1)
+    payment = PagoSuscripcion(
+        empresa_id=company.id,
+        plan_codigo=company.plan_codigo,
+        monto=payload.monto,
+        ciclo=payload.ciclo,
+        metodo_pago=payload.metodo_pago,
+        referencia=payload.referencia,
+        periodo_inicio=start,
+        periodo_fin=end,
+        pagado_at=datetime.now(UTC),
+        registrado_por=context.usuario.id,
+        observaciones=payload.observaciones,
+    )
+    company.suscripcion_estado = "activa"
+    company.suscripcion_inicio = start
+    company.suscripcion_fin = end
+    company.estado = "activo"
+    db.add(payment)
+    await db.commit()
+    await db.refresh(payment)
+    return payment
 
 
 @router.post("/empresas", response_model=EmpresaPlataformaRead, status_code=status.HTTP_201_CREATED)
