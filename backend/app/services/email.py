@@ -4,6 +4,8 @@ import ssl
 from email.message import EmailMessage
 from email.utils import formataddr
 
+import httpx
+
 from app.core.config import settings
 
 
@@ -28,25 +30,18 @@ def _send_message(message: EmailMessage) -> None:
 
 
 async def send_password_reset_email(recipient: str, token: str) -> bool:
-    if not settings.smtp_configured:
+    if not settings.brevo_configured and not settings.smtp_configured:
         return False
 
     reset_url = (
         f"{settings.frontend_url.rstrip('/')}/restablecer-password?token={token}"
     )
-    message = EmailMessage()
-    message["Subject"] = "Restablece tu contraseña"
-    message["From"] = formataddr(
-        (settings.smtp_from_name, settings.smtp_from_email or "")
-    )
-    message["To"] = recipient
-    message.set_content(
+    text_content = (
         "Recibimos una solicitud para restablecer tu contraseña.\n\n"
         f"Abre este enlace durante los próximos 30 minutos:\n{reset_url}\n\n"
         "Si no realizaste esta solicitud, ignora este mensaje."
     )
-    message.add_alternative(
-        f"""
+    html_content = f"""
         <html>
           <body style="font-family:Arial,sans-serif;color:#0f172a">
             <h2>Restablece tu contraseña</h2>
@@ -61,8 +56,39 @@ async def send_password_reset_email(recipient: str, token: str) -> bool:
             <p>Si no realizaste esta solicitud, ignora este mensaje.</p>
           </body>
         </html>
-        """,
-        subtype="html",
+        """
+
+    if settings.brevo_configured:
+        async with httpx.AsyncClient(timeout=15) as client:
+            response = await client.post(
+                "https://api.brevo.com/v3/smtp/email",
+                headers={
+                    "api-key": settings.brevo_api_key or "",
+                    "accept": "application/json",
+                    "content-type": "application/json",
+                },
+                json={
+                    "sender": {
+                        "email": settings.brevo_from_email,
+                        "name": settings.brevo_from_name,
+                    },
+                    "to": [{"email": recipient}],
+                    "subject": "Restablece tu contraseña",
+                    "textContent": text_content,
+                    "htmlContent": html_content,
+                    "tags": ["password-reset"],
+                },
+            )
+            response.raise_for_status()
+        return True
+
+    message = EmailMessage()
+    message["Subject"] = "Restablece tu contraseña"
+    message["From"] = formataddr(
+        (settings.smtp_from_name, settings.smtp_from_email or "")
     )
+    message["To"] = recipient
+    message.set_content(text_content)
+    message.add_alternative(html_content, subtype="html")
     await asyncio.to_thread(_send_message, message)
     return True

@@ -40,6 +40,9 @@ class Settings(BaseSettings):
     smtp_from_name: str = "Gestión de taller"
     smtp_use_tls: bool = True
     smtp_use_ssl: bool = False
+    brevo_api_key: str | None = None
+    brevo_from_email: str | None = None
+    brevo_from_name: str = "Gestión de taller"
 
     @field_validator("database_url")
     @classmethod
@@ -59,6 +62,10 @@ class Settings(BaseSettings):
     @property
     def smtp_configured(self) -> bool:
         return bool(self.smtp_host and self.smtp_from_email)
+
+    @property
+    def brevo_configured(self) -> bool:
+        return bool(self.brevo_api_key and self.brevo_from_email)
 
 
 @lru_cache
