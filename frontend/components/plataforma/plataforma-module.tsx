@@ -1,7 +1,7 @@
 "use client";
 
 import { FormEvent, useCallback, useEffect, useState } from "react";
-import { Building2, CreditCard, History, Plus, Settings2, Users, X } from "lucide-react";
+import { Bell, Building2, CreditCard, History, Plus, RefreshCw, Settings2, Users, X } from "lucide-react";
 import { ApiError, apiRequest } from "@/lib/api";
 import { PageHeading } from "@/components/ui/page-heading";
 
@@ -19,6 +19,7 @@ type Plan = {
   modulos: string[]; estado: string;
 };
 type Payment = { id:string; monto:string; ciclo:string; metodo_pago:string; referencia:string|null; periodo_inicio:string; periodo_fin:string; pagado_at:string };
+type Alert = { id:string; empresa_nombre:string; tipo:string; fecha_vencimiento:string; destinatario:string; estado:string; error:string|null; created_at:string };
 
 const moduleOptions = [
   ["agenda","Agenda"],["clientes","Clientes"],["vehiculos","Vehículos"],
@@ -43,6 +44,7 @@ export function PlataformaModule() {
   const [payingCompany, setPayingCompany] = useState<Company | null>(null);
   const [historyCompany, setHistoryCompany] = useState<Company | null>(null);
   const [payments, setPayments] = useState<Payment[]>([]);
+  const [alerts, setAlerts] = useState<Alert[]>([]);
   const [payment, setPayment] = useState({monto:"",ciclo:"mensual",metodo_pago:"transferencia",referencia:"",observaciones:""});
   const [selected, setSelected] = useState<Company | null>(null);
   const [creating, setCreating] = useState(false);
@@ -52,12 +54,13 @@ export function PlataformaModule() {
 
   const load = useCallback(async () => {
     try {
-      const [stats, rows, planRows] = await Promise.all([
+      const [stats, rows, planRows, alertRows] = await Promise.all([
         apiRequest<Summary>("/plataforma/resumen"),
         apiRequest<Company[]>("/plataforma/empresas"),
         apiRequest<Plan[]>("/plataforma/planes"),
+        apiRequest<Alert[]>("/plataforma/alertas"),
       ]);
-      setSummary(stats); setCompanies(rows); setPlans(planRows); setError("");
+      setSummary(stats); setCompanies(rows); setPlans(planRows); setAlerts(alertRows); setError("");
     } catch (value) {
       setError(value instanceof ApiError ? value.message : "No se pudo cargar la plataforma");
     }
@@ -132,6 +135,13 @@ export function PlataformaModule() {
     catch(value) { setError(value instanceof ApiError?value.message:"No se pudo cargar el historial"); }
   }
 
+  async function processAlerts() {
+    setSaving(true); setError("");
+    try { await apiRequest("/plataforma/alertas/procesar",{method:"POST"}); await load(); }
+    catch(value) { setError(value instanceof ApiError?value.message:"No se pudieron procesar las alertas"); }
+    finally { setSaving(false); }
+  }
+
   return <div className="space-y-5">
     <PageHeading title="Administración de la plataforma" subtitle="Empresas, suscripciones y límites del sistema SaaS." action={<div className="flex gap-2"><button className="button" disabled={!plans.length} onClick={() => setEditingPlan(plans[0])}><Settings2 size={16}/> Configurar planes</button><button className="button primary" onClick={() => setCreating(true)}><Plus size={16}/> Nueva empresa</button></div>} />
     {error ? <div className="rounded-xl bg-red-50 p-3 text-sm text-red-700">{error}</div> : null}
@@ -142,6 +152,11 @@ export function PlataformaModule() {
       <Stat label="Vencidas" value={summary?.empresas_vencidas} />
       <Stat label="Usuarios" value={summary?.usuarios_activos} icon={<Users size={18}/>} />
     </div>
+    <section className="rounded-2xl border bg-white p-5">
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3"><div><h2 className="flex items-center gap-2 font-bold"><Bell size={18} className="text-amber-500"/> Alertas de suscripción</h2><p className="text-xs text-slate-500">Correos enviados por vencimientos y periodos de gracia.</p></div><button className="button" disabled={saving} onClick={()=>void processAlerts()}><RefreshCw size={15}/> Revisar ahora</button></div>
+      <div className="grid gap-3 lg:grid-cols-3">{alerts.slice(0,6).map(alert=><div className="rounded-xl border p-3" key={alert.id}><div className="flex items-start justify-between gap-2"><div className="font-semibold">{alert.empresa_nombre}</div><span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${alert.estado==="enviada"?"bg-emerald-50 text-emerald-700":"bg-red-50 text-red-700"}`}>{alert.estado}</span></div><div className="mt-1 text-xs capitalize text-slate-500">{alert.tipo.replaceAll("_"," ")} · vence {alert.fecha_vencimiento}</div><div className="mt-1 truncate text-xs text-slate-400">{alert.destinatario}</div></div>)}</div>
+      {!alerts.length?<div className="rounded-xl bg-slate-50 p-4 text-center text-sm text-slate-500">No hay alertas generadas.</div>:null}
+    </section>
     <section className="overflow-hidden rounded-2xl border bg-white">
       <div className="overflow-x-auto"><table className="w-full text-left text-sm">
         <thead className="bg-slate-50 text-xs uppercase text-slate-500"><tr><th className="p-4">Empresa</th><th>Plan</th><th>Suscripción</th><th>Uso</th><th>Órdenes</th><th></th></tr></thead>

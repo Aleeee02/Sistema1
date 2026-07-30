@@ -92,3 +92,45 @@ async def send_password_reset_email(recipient: str, token: str) -> bool:
     message.add_alternative(html_content, subtype="html")
     await asyncio.to_thread(_send_message, message)
     return True
+
+
+async def send_subscription_alert_email(
+    recipient: str,
+    company_name: str,
+    subject: str,
+    message_text: str,
+) -> bool:
+    if not settings.brevo_configured and not settings.smtp_configured:
+        return False
+    html_content = f"""
+    <html><body style="font-family:Arial,sans-serif;color:#0f172a">
+      <h2>{subject}</h2>
+      <p>Empresa: <strong>{company_name}</strong></p>
+      <p>{message_text}</p>
+      <p>Si ya realizaste el pago, comunícate con el administrador de la plataforma.</p>
+    </body></html>
+    """
+    if settings.brevo_configured:
+        async with httpx.AsyncClient(timeout=15) as client:
+            response = await client.post(
+                "https://api.brevo.com/v3/smtp/email",
+                headers={"api-key": settings.brevo_api_key or "", "accept": "application/json", "content-type": "application/json"},
+                json={
+                    "sender": {"email": settings.brevo_from_email, "name": settings.brevo_from_name},
+                    "to": [{"email": recipient}],
+                    "subject": subject,
+                    "textContent": f"{company_name}\n\n{message_text}",
+                    "htmlContent": html_content,
+                    "tags": ["subscription-alert"],
+                },
+            )
+            response.raise_for_status()
+        return True
+    email = EmailMessage()
+    email["Subject"] = subject
+    email["From"] = formataddr((settings.smtp_from_name, settings.smtp_from_email or ""))
+    email["To"] = recipient
+    email.set_content(f"{company_name}\n\n{message_text}")
+    email.add_alternative(html_content, subtype="html")
+    await asyncio.to_thread(_send_message, email)
+    return True

@@ -73,6 +73,19 @@ class PagoSuscripcion(UUIDPrimaryKeyMixin, Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
+class AlertaSuscripcion(UUIDPrimaryKeyMixin, Base):
+    __tablename__ = "alertas_suscripciones"
+
+    empresa_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("empresas.id"))
+    tipo: Mapped[str] = mapped_column(String(30))
+    fecha_vencimiento: Mapped[date] = mapped_column(Date)
+    destinatario: Mapped[str] = mapped_column(String(255))
+    estado: Mapped[str] = mapped_column(String(20), server_default="pendiente")
+    error: Mapped[str | None] = mapped_column(Text)
+    enviado_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
 class Sucursal(UUIDPrimaryKeyMixin, Base):
     __tablename__ = "sucursales"
 

@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.deps import SuperadminContext
 from app.core.security import hash_password
 from app.db.session import get_db
-from app.models.empresa import Empresa, PagoSuscripcion, PlanSaaS, Sucursal
+from app.models.empresa import AlertaSuscripcion, Empresa, PagoSuscripcion, PlanSaaS, Sucursal
 from app.models.orden import OrdenTrabajo
 from app.models.usuario import Rol, Usuario, UsuarioEmpresa, UsuarioSucursal
 from app.schemas.plataforma import (
@@ -21,8 +21,10 @@ from app.schemas.plataforma import (
     PlanSaaSUpdate,
     PagoSuscripcionCreate,
     PagoSuscripcionRead,
+    AlertaSuscripcionRead,
     ResumenPlataforma,
 )
+from app.services.alertas_suscripciones import process_subscription_alerts
 
 router = APIRouter()
 
@@ -142,6 +144,35 @@ async def list_subscription_payments(
             )
         ).all()
     )
+
+
+@router.get("/alertas", response_model=list[AlertaSuscripcionRead])
+async def list_subscription_alerts(
+    _: SuperadminContext,
+    db: AsyncSession = Depends(get_db),
+):
+    rows = (
+        await db.execute(
+            select(AlertaSuscripcion, Empresa.nombre_comercial)
+            .join(Empresa, Empresa.id == AlertaSuscripcion.empresa_id)
+            .order_by(AlertaSuscripcion.created_at.desc())
+            .limit(100)
+        )
+    ).all()
+    return [
+        AlertaSuscripcionRead.model_validate(
+            {
+                **{column.name: getattr(alert, column.name) for column in AlertaSuscripcion.__table__.columns},
+                "empresa_nombre": company_name,
+            }
+        )
+        for alert, company_name in rows
+    ]
+
+
+@router.post("/alertas/procesar")
+async def process_alerts(_: SuperadminContext):
+    return await process_subscription_alerts()
 
 
 @router.post("/empresas/{empresa_id}/pagos", response_model=PagoSuscripcionRead, status_code=status.HTTP_201_CREATED)

@@ -111,3 +111,16 @@ class PagoSuscripcionRead(ORMModel):
     periodo_fin: date
     pagado_at: datetime
     observaciones: str | None
+
+
+class AlertaSuscripcionRead(ORMModel):
+    id: uuid.UUID
+    empresa_id: uuid.UUID
+    empresa_nombre: str
+    tipo: str
+    fecha_vencimiento: date
+    destinatario: str
+    estado: str
+    error: str | None
+    enviado_at: datetime | None
+    created_at: datetime

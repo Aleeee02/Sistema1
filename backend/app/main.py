@@ -1,4 +1,5 @@
 from contextlib import asynccontextmanager
+import asyncio
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -6,12 +7,18 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.api.v1.router import api_router
 from app.core.config import settings
 from app.db.session import engine
+from app.services.alertas_suscripciones import subscription_alert_loop
 
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
-    yield
-    await engine.dispose()
+    alert_task = asyncio.create_task(subscription_alert_loop())
+    try:
+        yield
+    finally:
+        alert_task.cancel()
+        await asyncio.gather(alert_task, return_exceptions=True)
+        await engine.dispose()
 
 
 app = FastAPI(
