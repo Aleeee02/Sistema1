@@ -1,0 +1,68 @@
+import asyncio
+import smtplib
+import ssl
+from email.message import EmailMessage
+from email.utils import formataddr
+
+from app.core.config import settings
+
+
+def _send_message(message: EmailMessage) -> None:
+    context = ssl.create_default_context()
+    if settings.smtp_use_ssl:
+        client = smtplib.SMTP_SSL(
+            settings.smtp_host,
+            settings.smtp_port,
+            timeout=15,
+            context=context,
+        )
+    else:
+        client = smtplib.SMTP(settings.smtp_host, settings.smtp_port, timeout=15)
+
+    with client:
+        if settings.smtp_use_tls and not settings.smtp_use_ssl:
+            client.starttls(context=context)
+        if settings.smtp_username and settings.smtp_password:
+            client.login(settings.smtp_username, settings.smtp_password)
+        client.send_message(message)
+
+
+async def send_password_reset_email(recipient: str, token: str) -> bool:
+    if not settings.smtp_configured:
+        return False
+
+    reset_url = (
+        f"{settings.frontend_url.rstrip('/')}/restablecer-password?token={token}"
+    )
+    message = EmailMessage()
+    message["Subject"] = "Restablece tu contraseña"
+    message["From"] = formataddr(
+        (settings.smtp_from_name, settings.smtp_from_email or "")
+    )
+    message["To"] = recipient
+    message.set_content(
+        "Recibimos una solicitud para restablecer tu contraseña.\n\n"
+        f"Abre este enlace durante los próximos 30 minutos:\n{reset_url}\n\n"
+        "Si no realizaste esta solicitud, ignora este mensaje."
+    )
+    message.add_alternative(
+        f"""
+        <html>
+          <body style="font-family:Arial,sans-serif;color:#0f172a">
+            <h2>Restablece tu contraseña</h2>
+            <p>Recibimos una solicitud para restablecer tu contraseña.</p>
+            <p>
+              <a href="{reset_url}" style="display:inline-block;padding:12px 18px;
+              background:#2563eb;color:white;text-decoration:none;border-radius:8px">
+                Crear nueva contraseña
+              </a>
+            </p>
+            <p>El enlace vence en 30 minutos.</p>
+            <p>Si no realizaste esta solicitud, ignora este mensaje.</p>
+          </body>
+        </html>
+        """,
+        subtype="html",
+    )
+    await asyncio.to_thread(_send_message, message)
+    return True
