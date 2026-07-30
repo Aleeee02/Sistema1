@@ -76,9 +76,21 @@ async def process_subscription_alerts() -> dict[str, int]:
             )
             await db.commit()
             if not alert_id:
-                continue
-            created += 1
-            alert = await db.get(AlertaSuscripcion, alert_id)
+                alert = await db.scalar(
+                    select(AlertaSuscripcion).where(
+                        AlertaSuscripcion.empresa_id == company.id,
+                        AlertaSuscripcion.tipo == alert_type,
+                        AlertaSuscripcion.fecha_vencimiento == company.suscripcion_fin,
+                    )
+                )
+                if not alert or alert.estado != "error":
+                    continue
+                alert.estado = "pendiente"
+                alert.error = None
+                await db.commit()
+            else:
+                created += 1
+                alert = await db.get(AlertaSuscripcion, alert_id)
             try:
                 delivered = await send_subscription_alert_email(recipient, company.nombre_comercial, subject, text)
                 alert.estado = "enviada" if delivered else "error"
