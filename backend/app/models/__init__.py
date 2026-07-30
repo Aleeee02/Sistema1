@@ -5,7 +5,7 @@ from app.models.comprobante import Comprobante, ComprobanteItem
 from app.models.cotizacion import Cotizacion, CotizacionItem
 from app.models.empresa import AlertaSuscripcion, Empresa, PagoSuscripcion, PlanSaaS, Sucursal
 from app.models.empleado import Empleado, EmpleadoSucursal, OrdenEmpleado
-from app.models.orden import OrdenTrabajo, Servicio
+from app.models.orden import OrdenEstadoHistorial, OrdenServicio, OrdenTrabajo, Servicio
 from app.models.pago import MetodoPagoConfig, Pago
 from app.models.inventario import (
     Existencia,
@@ -38,6 +38,8 @@ __all__ = [
     "OrdenEmpleado",
     "Sucursal",
     "OrdenTrabajo",
+    "OrdenEstadoHistorial",
+    "OrdenServicio",
     "Pago",
     "MetodoPagoConfig",
     "Producto",

@@ -65,3 +65,29 @@ class Servicio(UUIDPrimaryKeyMixin, Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )
+
+
+class OrdenEstadoHistorial(UUIDPrimaryKeyMixin, Base):
+    __tablename__ = "ordenes_estados_historial"
+
+    empresa_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("empresas.id"))
+    orden_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("ordenes_trabajo.id"))
+    estado_anterior: Mapped[str | None] = mapped_column(String(30))
+    estado_nuevo: Mapped[str] = mapped_column(String(30))
+    motivo: Mapped[str | None] = mapped_column(Text)
+    usuario_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("usuarios.id"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class OrdenServicio(UUIDPrimaryKeyMixin, Base):
+    __tablename__ = "ordenes_servicios"
+
+    empresa_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("empresas.id"))
+    orden_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("ordenes_trabajo.id"))
+    servicio_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("servicios.id"))
+    descripcion: Mapped[str] = mapped_column(String(250))
+    cantidad: Mapped[Decimal] = mapped_column(Numeric(10, 2), server_default="1")
+    precio_unitario: Mapped[Decimal] = mapped_column(Numeric(12, 2), server_default="0")
+    descuento: Mapped[Decimal] = mapped_column(Numeric(12, 2), server_default="0")
+    total: Mapped[Decimal] = mapped_column(Numeric(12, 2), server_default="0")
+    estado: Mapped[str] = mapped_column(String(20), server_default="pendiente")

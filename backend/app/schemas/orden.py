@@ -87,3 +87,28 @@ class SucursalOption(ORMModel):
 
 class OrdenOptions(ORMModel):
     sucursales: list[SucursalOption]
+
+
+class OrdenEstadoHistorialRead(ORMModel):
+    id: uuid.UUID
+    estado_anterior: str | None
+    estado_nuevo: str
+    motivo: str | None
+    usuario_id: uuid.UUID
+    usuario_nombre: str
+    created_at: datetime
+
+
+class OrdenServicioRead(ORMModel):
+    id: uuid.UUID
+    servicio_id: uuid.UUID | None
+    descripcion: str
+    cantidad: Decimal
+    precio_unitario: Decimal
+    descuento: Decimal
+    total: Decimal
+    estado: str
+
+
+class OrdenServicioEstadoUpdate(ORMModel):
+    estado: str = Field(pattern="^(pendiente|en_proceso|terminado|cancelado)$")

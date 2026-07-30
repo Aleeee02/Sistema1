@@ -13,6 +13,8 @@ import {
   Search,
   UserRound,
   UsersRound,
+  Wrench,
+  History,
   X,
 } from "lucide-react";
 import Image from "next/image";
@@ -27,6 +29,8 @@ type Employee = { id: string; nombres: string; apellidos: string; cargo: string;
 type Assignment = { id: string; empleado_id: string; empleado_nombre: string; cargo: string; es_responsable: boolean };
 type InspectionFile = { id: string; nombre_original: string; url: string | null };
 type Inspection = { id: string; tipo: string; confirmada_at: string | null; created_at: string; archivos: InspectionFile[] };
+type OrderService = { id:string; descripcion:string; cantidad:string; total:string; estado:string };
+type OrderHistory = { id:string; estado_anterior:string|null; estado_nuevo:string; motivo:string|null; usuario_nombre:string; created_at:string };
 type Options = { sucursales: Branch[] };
 type OrderForm = {
   sucursal_id: string;
@@ -88,6 +92,8 @@ export function OrdenesModule() {
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [assignments, setAssignments] = useState<Assignment[]>([]);
   const [inspections, setInspections] = useState<Inspection[]>([]);
+  const [orderServices, setOrderServices] = useState<OrderService[]>([]);
+  const [orderHistory, setOrderHistory] = useState<OrderHistory[]>([]);
   const [employeeId, setEmployeeId] = useState("");
   const [selected, setSelected] = useState<OrdenTrabajo | null>(null);
   const [search, setSearch] = useState("");
@@ -170,14 +176,18 @@ export function OrdenesModule() {
     setSelected(order);
     setEmployeeId("");
     try {
-      const [staff, assigned, inspectionData] = await Promise.all([
+      const [staff, assigned, inspectionData, serviceData, historyData] = await Promise.all([
         apiRequest<Employee[]>(`/empleados?sucursal_id=${order.sucursal_id}`),
         apiRequest<Assignment[]>(`/empleados/asignaciones/orden/${order.id}`),
         apiRequest<Inspection[]>(`/inspecciones/orden/${order.id}`),
+        apiRequest<OrderService[]>(`/ordenes/${order.id}/servicios`),
+        apiRequest<OrderHistory[]>(`/ordenes/${order.id}/historial`),
       ]);
       setEmployees(staff);
       setAssignments(assigned);
       setInspections(inspectionData);
+      setOrderServices(serviceData);
+      setOrderHistory(historyData);
     } catch (requestError) {
       setError(errorMessage(requestError));
     }
@@ -211,6 +221,24 @@ export function OrdenesModule() {
       setAssignments(await apiRequest<Assignment[]>(`/empleados/asignaciones/orden/${selected.id}`));
     } catch (requestError) {
       setError(errorMessage(requestError));
+    }
+  }
+
+  async function updateService(serviceId: string, estado: string) {
+    if (!selected) return;
+    setSaving(true);
+    try {
+      const updated = await apiRequest<OrderService>(
+        `/ordenes/${selected.id}/servicios/${serviceId}`,
+        { method: "PATCH", body: JSON.stringify({ estado }) },
+      );
+      setOrderServices((current) =>
+        current.map((item) => item.id === updated.id ? updated : item),
+      );
+    } catch (requestError) {
+      setError(errorMessage(requestError));
+    } finally {
+      setSaving(false);
     }
   }
 
@@ -299,6 +327,7 @@ export function OrdenesModule() {
         body: JSON.stringify({ estado: state }),
       });
       setSelected(updated);
+      await selectOrder(updated);
       await loadOrders(search, filter);
     } catch (requestError) {
       setError(errorMessage(requestError));
@@ -368,6 +397,10 @@ export function OrdenesModule() {
               <div className="rounded-xl bg-slate-50 p-4"><span className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Falla reportada</span><p className="mt-2 text-sm leading-6 text-slate-700">{selected.falla_reportada || "Sin información"}</p></div>
               {selected.diagnostico ? <div className="mt-3 rounded-xl border border-blue-100 bg-blue-50 p-4"><span className="text-[10px] font-bold uppercase tracking-wide text-blue-500">Diagnóstico</span><p className="mt-2 text-sm leading-6 text-slate-700">{selected.diagnostico}</p></div> : null}
               <div className="mt-5 border-t border-slate-100 pt-5">
+                <div className="mb-3 flex items-center gap-2"><Wrench size={16} className="text-blue-600" /><h3 className="text-sm font-semibold">Servicios aprobados</h3></div>
+                {orderServices.length ? <div className="space-y-2">{orderServices.map((service) => <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl bg-slate-50 p-3" key={service.id}><div><div className="text-sm font-semibold">{service.descripcion}</div><div className="text-xs text-slate-500">{Number(service.cantidad)} unidad(es) · S/ {Number(service.total).toFixed(2)}</div></div><select className="form-control max-w-40 capitalize" disabled={saving || !["aprobada", "en_proceso", "terminada"].includes(selected.estado)} value={service.estado} onChange={(event) => void updateService(service.id, event.target.value)}><option value="pendiente">Pendiente</option><option value="en_proceso">En proceso</option><option value="terminado">Terminado</option><option value="cancelado">Cancelado</option></select></div>)}</div> : <p className="rounded-xl bg-slate-50 p-3 text-xs text-slate-500">Los servicios aparecerán cuando se apruebe la cotización.</p>}
+              </div>
+              <div className="mt-5 border-t border-slate-100 pt-5">
                 <div className="mb-3 flex items-center gap-2"><ClipboardCheck size={16} className="text-blue-600" /><h3 className="text-sm font-semibold">Inspecciones y fotografías</h3></div>
                 {inspections.length === 0 ? <p className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">Esta OT todavía no tiene inspecciones. No se podrá enviar ni aprobar una cotización.</p> : <div className="space-y-3">{inspections.map((inspection) => <div key={inspection.id} className="rounded-xl bg-slate-50 p-3"><div className="flex justify-between"><strong className="flex items-center gap-2 text-sm capitalize">{inspection.tipo}</strong><span className={`text-xs font-bold ${inspection.confirmada_at ? "text-emerald-600" : "text-orange-600"}`}>{inspection.confirmada_at ? "Confirmada" : "Borrador"}</span></div><div className="mt-3 grid grid-cols-3 gap-2">{inspection.archivos.length === 0 ? <span className="col-span-full flex items-center gap-1 text-xs text-slate-500"><Camera size={13} /> Sin fotografías</span> : inspection.archivos.map((file) => file.url ? <a key={file.id} href={file.url} target="_blank" rel="noreferrer" className="overflow-hidden rounded-lg border bg-white"><Image loader={({ src }) => src} unoptimized src={file.url} alt={file.nombre_original} width={180} height={110} className="h-20 w-full object-cover" /></a> : null)}</div></div>)}</div>}
               </div>
@@ -382,6 +415,7 @@ export function OrdenesModule() {
                 <Total label="Saldo" value={selected.saldo} strong />
               </div>
               {(nextStates[selected.estado] || []).length ? <div className="mt-5 border-t border-slate-100 pt-5"><h3 className="mb-3 text-sm font-semibold">Siguiente etapa</h3><div className="flex flex-wrap gap-2">{nextStates[selected.estado].map((state) => <button key={state} disabled={saving} onClick={() => void changeStatus(state)} className={`button ${state === "cancelada" ? "text-red-600" : "primary"}`}>{labels[state]} <ChevronRight size={14} /></button>)}</div></div> : null}
+              <div className="mt-5 border-t border-slate-100 pt-5"><div className="mb-3 flex items-center gap-2"><History size={16} className="text-blue-600" /><h3 className="text-sm font-semibold">Historial de la orden</h3></div><div className="space-y-3">{orderHistory.map((item) => <div className="border-l-2 border-blue-200 pl-3" key={item.id}><div className="text-sm font-semibold">{item.estado_anterior ? `${labels[item.estado_anterior] || item.estado_anterior} → ` : ""}{labels[item.estado_nuevo] || item.estado_nuevo}</div><div className="text-xs text-slate-500">{item.usuario_nombre} · {new Date(item.created_at).toLocaleString("es-PE")}</div>{item.motivo ? <div className="text-xs text-slate-400">{item.motivo}</div> : null}</div>)}</div></div>
             </>
           )}
         </section>

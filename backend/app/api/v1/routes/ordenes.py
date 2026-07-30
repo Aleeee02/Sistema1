@@ -13,7 +13,8 @@ from app.models.cotizacion import Cotizacion, CotizacionItem
 from app.models.inventario import ReservaInventario
 from app.models.inspeccion import Inspeccion
 from app.models.empresa import Sucursal
-from app.models.orden import OrdenTrabajo
+from app.models.orden import OrdenEstadoHistorial, OrdenServicio, OrdenTrabajo
+from app.models.usuario import Usuario
 from app.models.vehiculo import Vehiculo, VehiculoCliente
 from app.schemas.orden import (
     ESTADOS_ORDEN,
@@ -21,10 +22,14 @@ from app.schemas.orden import (
     OrdenEstadoUpdate,
     OrdenOptions,
     OrdenRead,
+    OrdenEstadoHistorialRead,
+    OrdenServicioEstadoUpdate,
+    OrdenServicioRead,
     OrdenUpdate,
 )
 from app.services.auditoria import record_audit
 from app.services.notificaciones import notify
+from app.services.ordenes import record_order_status
 
 router = APIRouter()
 
@@ -220,6 +225,15 @@ async def create_orden(
     db.add(order)
     try:
         await db.flush()
+        record_order_status(
+            db,
+            empresa_id=context.empresa_id,
+            orden_id=order.id,
+            previous=None,
+            current=order.estado,
+            usuario_id=context.usuario.id,
+            reason="Orden creada",
+        )
         record_audit(
             db,
             context,
@@ -245,6 +259,83 @@ async def get_orden(
     db: AsyncSession = Depends(get_db),
 ) -> OrdenRead:
     return serialize(await get_row(db, order_id, context))
+
+
+@router.get("/{order_id}/historial", response_model=list[OrdenEstadoHistorialRead])
+async def get_order_history(
+    order_id: uuid.UUID,
+    context: CurrentContext,
+    db: AsyncSession = Depends(get_db),
+):
+    await get_row(db, order_id, context)
+    name = func.trim(func.concat(Usuario.nombres, " ", Usuario.apellidos))
+    rows = (
+        await db.execute(
+            select(OrdenEstadoHistorial, name.label("usuario_nombre"))
+            .join(Usuario, Usuario.id == OrdenEstadoHistorial.usuario_id)
+            .where(
+                OrdenEstadoHistorial.empresa_id == context.empresa_id,
+                OrdenEstadoHistorial.orden_id == order_id,
+            )
+            .order_by(OrdenEstadoHistorial.created_at)
+        )
+    ).all()
+    return [
+        OrdenEstadoHistorialRead(
+            **{column.name: getattr(item, column.name) for column in OrdenEstadoHistorial.__table__.columns},
+            usuario_nombre=row.usuario_nombre,
+        )
+        for row in rows
+        for item in [row[0]]
+    ]
+
+
+@router.get("/{order_id}/servicios", response_model=list[OrdenServicioRead])
+async def get_order_services(
+    order_id: uuid.UUID,
+    context: CurrentContext,
+    db: AsyncSession = Depends(get_db),
+):
+    await get_row(db, order_id, context)
+    return list(
+        (
+            await db.scalars(
+                select(OrdenServicio)
+                .where(
+                    OrdenServicio.empresa_id == context.empresa_id,
+                    OrdenServicio.orden_id == order_id,
+                )
+                .order_by(OrdenServicio.descripcion)
+            )
+        ).all()
+    )
+
+
+@router.patch("/{order_id}/servicios/{service_id}", response_model=OrdenServicioRead, dependencies=[Depends(require_permission("ordenes.avanzar"))])
+async def update_order_service(
+    order_id: uuid.UUID,
+    service_id: uuid.UUID,
+    payload: OrdenServicioEstadoUpdate,
+    context: CurrentContext,
+    db: AsyncSession = Depends(get_db),
+):
+    row = await get_row(db, order_id, context)
+    order = row[0]
+    if order.estado not in {"aprobada", "en_proceso", "terminada"}:
+        raise HTTPException(status_code=409, detail="La orden no está disponible para ejecutar servicios")
+    service = await db.scalar(
+        select(OrdenServicio).where(
+            OrdenServicio.id == service_id,
+            OrdenServicio.orden_id == order_id,
+            OrdenServicio.empresa_id == context.empresa_id,
+        )
+    )
+    if not service:
+        raise HTTPException(status_code=404, detail="Servicio de la orden no encontrado")
+    service.estado = payload.estado
+    await db.commit()
+    await db.refresh(service)
+    return service
 
 
 @router.patch("/{order_id}", response_model=OrdenRead, dependencies=[Depends(require_permission("ordenes.editar"))])
@@ -346,6 +437,19 @@ async def change_status(
                 status_code=409,
                 detail="La orden requiere una cotización aprobada para continuar",
             )
+    if payload.estado == "terminada":
+        unfinished = await db.scalar(
+            select(func.count(OrdenServicio.id)).where(
+                OrdenServicio.empresa_id == context.empresa_id,
+                OrdenServicio.orden_id == order.id,
+                OrdenServicio.estado.not_in(("terminado", "cancelado")),
+            )
+        )
+        if unfinished:
+            raise HTTPException(
+                status_code=409,
+                detail="Completa todos los servicios de la orden antes de terminarla",
+            )
     if payload.estado == "en_proceso":
         pending_external = await db.scalar(
             select(func.count(CotizacionItem.id))
@@ -365,6 +469,14 @@ async def change_status(
             )
     previous = order.estado
     order.estado = payload.estado
+    record_order_status(
+        db,
+        empresa_id=context.empresa_id,
+        orden_id=order.id,
+        previous=previous,
+        current=order.estado,
+        usuario_id=context.usuario.id,
+    )
     if payload.estado == "cancelada":
         now = datetime.now(timezone.utc)
         await db.execute(

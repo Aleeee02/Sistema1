@@ -18,7 +18,7 @@ from app.models.inventario import (
     ReservaInventario,
 )
 from app.models.inspeccion import Inspeccion
-from app.models.orden import OrdenTrabajo, Servicio
+from app.models.orden import OrdenServicio, OrdenTrabajo, Servicio
 from app.models.vehiculo import Vehiculo
 from app.schemas.cotizacion import (
     CotizacionCreate,
@@ -28,6 +28,7 @@ from app.schemas.cotizacion import (
 )
 from app.services.auditoria import record_audit
 from app.services.notificaciones import notify
+from app.services.ordenes import record_order_status
 
 router = APIRouter()
 MONEY = Decimal("0.01")
@@ -561,12 +562,42 @@ async def change_quote_status(
     ):
         raise HTTPException(status_code=409, detail="La orden no está esperando aprobación")
     previous = quote.estado
+    order_previous = order.estado
     now = datetime.now(timezone.utc)
     if payload.estado == "enviada":
         quote.enviada_at = now
         order.estado = "esperando_aprobacion"
     elif payload.estado == "aprobada":
         await create_reservations(db, quote, order, context)
+        await db.execute(
+            delete(OrdenServicio).where(
+                OrdenServicio.empresa_id == context.empresa_id,
+                OrdenServicio.orden_id == order.id,
+            )
+        )
+        approved_services = (
+            await db.scalars(
+                select(CotizacionItem).where(
+                    CotizacionItem.empresa_id == context.empresa_id,
+                    CotizacionItem.cotizacion_id == quote.id,
+                    CotizacionItem.tipo == "servicio",
+                )
+            )
+        ).all()
+        for item in approved_services:
+            db.add(
+                OrdenServicio(
+                    empresa_id=context.empresa_id,
+                    orden_id=order.id,
+                    servicio_id=item.servicio_id,
+                    descripcion=item.descripcion,
+                    cantidad=item.cantidad,
+                    precio_unitario=item.precio_unitario,
+                    descuento=item.descuento,
+                    total=item.total,
+                    estado="pendiente",
+                )
+            )
         quote.aprobada_at = now
         quote.aprobada_por = payload.aprobada_por or "Cliente"
         order.estado = "aprobada"
@@ -575,6 +606,15 @@ async def change_quote_status(
     else:
         order.estado = "diagnostico"
     quote.estado = payload.estado
+    record_order_status(
+        db,
+        empresa_id=context.empresa_id,
+        orden_id=order.id,
+        previous=order_previous,
+        current=order.estado,
+        usuario_id=context.usuario.id,
+        reason=f"Cotización {payload.estado}",
+    )
     if payload.estado in {"aprobada", "rechazada"}:
         notify(db, context.empresa_id, f"cotizacion_{payload.estado}", f"Cotización {payload.estado}", f"La cotización COT-{quote.numero:05d} fue {payload.estado}.", "/cotizaciones", order.sucursal_id)
     record_audit(
